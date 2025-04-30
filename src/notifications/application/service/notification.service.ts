@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { NotificationStrategy } from '../strategies/notification-strategy.interface';
 import { EmailStrategy } from '../strategies/email.strategy';
 import { NotificationAttempt } from '../../entities/notification-attempt.entity';
@@ -11,25 +11,30 @@ import { Queue } from 'bullmq';
 @Injectable()
 export class NotificationService {
   private readonly strategyMap: Record<string, NotificationStrategy>;
+  private readonly logger = new Logger(NotificationService.name);
 
   constructor(
     @InjectRepository(Notification)
     private readonly notificationRepo: Repository<Notification>,
+
     @InjectRepository(NotificationAttempt)
     private readonly attemptRepo: Repository<NotificationAttempt>,
+
     private readonly emailStrategy: EmailStrategy,
+
     @InjectQueue('notification')
     private readonly notificationQueue: Queue,
   ) {
     this.strategyMap = {
       email: this.emailStrategy,
-      // other strategies: sms, push, etc.
+      // Add other strategies like sms: this.smsStrategy
     };
   }
 
   private getStrategy(type: string): NotificationStrategy {
     const strategy = this.strategyMap[type.toLowerCase()];
     if (!strategy) {
+      this.logger.error(`Unsupported notification type: ${type}`);
       throw new Error(`Unsupported notification type: ${type}`);
     }
     return strategy;
@@ -41,26 +46,44 @@ export class NotificationService {
       recipient: payload.recipient,
       subject: payload.subject,
       data: {
-        template: '',
-        templateData: '',
+        template: payload.data?.template || '',
+        templateData: payload.data?.templateData || '',
       },
-      status: 'PENDING',
     });
 
-    await this.notificationRepo.save(notification);
+    try {
+      await this.notificationRepo.save(notification);
+      this.logger.log(`Notification saved: ID ${notification.id}`);
 
-    const notificationAttempt = this.attemptRepo.create({
-      notification,
-      status: 'PENDING',
-    });
+      // Queue the notification
+      await this.notificationQueue.add(
+        'send-notification',
+        {
+          notificationId: notification.id,
+          type,
+          payload,
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 3000,
+          },
+          removeOnComplete: true,
+          removeOnFail: false,
+        },
+      );
 
-    await this.attemptRepo.save(notificationAttempt);
-
-    await this.notificationQueue.add('send-notification', {
-      notificationId: notification.id,
-      type,
-      payload,
-    });
+      this.logger.log(`Notification job queued: ID ${notification.id}`);
+    } catch (err) {
+      this.logger.error('Failed to queue notification', err.stack);
+      await this.attemptRepo.save({
+        notification,
+        status: 'FAILED',
+        response: err.message,
+      });
+      throw err;
+    }
 
     return { status: 'QUEUED', notificationId: notification.id };
   }
