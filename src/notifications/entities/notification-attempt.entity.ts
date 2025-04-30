@@ -18,6 +18,9 @@ export class NotificationAttempt {
   @Column({ type: 'text', nullable: true })
   response: string;
 
+  @Column()
+  status: string; //PENDING QUEUED FAILED SENT
+
   @CreateDateColumn()
   createdAt: Date;
 }

@@ -18,6 +18,9 @@ export class Notification {
   @Column('jsonb')
   data: any;
 
+  @Column()
+  status: string; //PENDING QUEUED FAILED SENT
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 

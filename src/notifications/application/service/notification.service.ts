@@ -5,6 +5,8 @@ import { NotificationAttempt } from '../../entities/notification-attempt.entity'
 import { Notification } from '../../entities/notification.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class NotificationService {
@@ -16,10 +18,12 @@ export class NotificationService {
     @InjectRepository(NotificationAttempt)
     private readonly attemptRepo: Repository<NotificationAttempt>,
     private readonly emailStrategy: EmailStrategy,
+    @InjectQueue('notification')
+    private readonly notificationQueue: Queue,
   ) {
     this.strategyMap = {
       email: this.emailStrategy,
-      // add other strategies (e.g., sms: this.smsStrategy)
+      // other strategies: sms, push, etc.
     };
   }
 
@@ -36,27 +40,29 @@ export class NotificationService {
       type,
       recipient: payload.recipient,
       subject: payload.subject,
-      data: { template: '', templateData: '' },
+      data: {
+        template: '',
+        templateData: '',
+      },
+      status: 'PENDING',
     });
+
     await this.notificationRepo.save(notification);
 
-    let status: 'SUCCESS' | 'FAILED' = 'SUCCESS';
-    let errorMessage: string | undefined;
-    try {
-      const strategy = this.getStrategy(type);
-
-      await strategy.send(payload);
-    } catch (error) {
-      console.log(error.message);
-      status = 'FAILED';
-      errorMessage = error.message;
-    }
-    await this.attemptRepo.save({
+    const notificationAttempt = this.attemptRepo.create({
       notification,
-      status,
-      response: errorMessage,
+      status: 'PENDING',
     });
-    return { status, notificationId: notification.id };
+
+    await this.attemptRepo.save(notificationAttempt);
+
+    await this.notificationQueue.add('send-notification', {
+      notificationId: notification.id,
+      type,
+      payload,
+    });
+
+    return { status: 'QUEUED', notificationId: notification.id };
   }
 
   async sendImmediate(type: string, payload: any): Promise<any> {
