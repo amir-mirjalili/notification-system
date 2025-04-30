@@ -49,11 +49,17 @@ export class NotificationService {
         template: payload.data?.template || '',
         templateData: payload.data?.templateData || '',
       },
+      status: 'PENDING',
     });
 
     try {
       await this.notificationRepo.save(notification);
       this.logger.log(`Notification saved: ID ${notification.id}`);
+
+      await this.attemptRepo.save({
+        notification,
+        status: 'PENDING',
+      });
 
       // Queue the notification
       await this.notificationQueue.add(

@@ -18,13 +18,13 @@ A modular, scalable, and extensible notification system built with **NestJS**, *
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/amir-mirjalili/notification-system.git
-cd notification-system
+  git clone https://github.com/amir-mirjalili/notification-system.git
+  cd notification-system
 ```
 
 ### 2. Install dependencies
 ```bash
-npm install
+  npm install
 ```
 
 ### 3. Configure environment variables
@@ -39,12 +39,17 @@ DB_NAME=DBNAME
 
 ### 4. Run database migrations
 ```bash
-npm run migration:create
+  npm run migration:create
 ```
 
 ### 5. Start the application
 ```bash
-npm run start:dev
+  npm run start:dev
+```
+
+### 6. test the application
+```bash
+  npm run test
 ```
 
 ---
