@@ -67,6 +67,25 @@ export class NotificationService {
 
   async sendImmediate(type: string, payload: any): Promise<any> {
     const strategy = this.getStrategy(type);
-    return strategy.sendImmediate(payload);
+    await strategy.sendImmediate(payload);
+    const notification = this.notificationRepo.create({
+      type,
+      recipient: payload.recipient,
+      subject: payload.subject,
+      data: {
+        template: '',
+        templateData: '',
+      },
+      status: 'SENT',
+    });
+
+    await this.notificationRepo.save(notification);
+    const notificationAttempt = this.attemptRepo.create({
+      notification,
+      status: 'PENDING',
+    });
+
+    await this.attemptRepo.save(notificationAttempt);
+    return { status: 'SENT', notificationId: notification.id };
   }
 }
